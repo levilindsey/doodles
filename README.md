@@ -7,7 +7,7 @@ Live at <https://levilindsey.github.io/doodles/>.
 
 | Doodle | Live | What it does |
 |---|---|---|
-| [`nerd-hero/`](nerd-hero/) | [levi.dev/nerdhero](https://levi.dev/nerdhero) | The n's stem shoots up and the d's stem drops out, so "nerd" becomes "hero". The blueprint background turns into a comic-book halftone. |
+| [`nerd-hero/`](nerd-hero/) | [levi.dev/nerdhero](https://levi.dev/nerdhero/) | The n's stem shoots up and the d's stem drops out, so "nerd" becomes "hero". The blueprint background turns into a comic-book halftone. |
 
 ## nerd → hero
 

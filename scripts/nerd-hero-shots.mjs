@@ -9,6 +9,7 @@
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 
 const require = createRequire(process.env.PUPPETEER_FROM ||
   'C:/Users/lsl/Repositories/knotmaze/package.json');
@@ -17,6 +18,7 @@ const puppeteer = require('puppeteer-core');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const outDir = process.argv[2];
 if (!outDir) throw new Error('usage: node scripts/nerd-hero-shots.mjs <outDir> [url]');
+fs.mkdirSync(outDir, { recursive: true });
 const base = process.argv[3] || pathToFileURL(path.join(here, '../nerd-hero/index.html')).href;
 const times = (process.env.TIMES || '0,0.2,0.45,0.62,0.74,0.85,1.0,1.6,2.3').split(',');
 const sizes = [{ n: 'd', w: 1280, h: 800, s: 1 }, { n: 'm', w: 412, h: 860, s: 2 }];
