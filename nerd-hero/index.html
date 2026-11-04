@@ -1,0 +1,1010 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>nerd</title>
+<meta name="description" content="The n's stem shoots up, the d's stem drops out, and “nerd” becomes “hero”.">
+<meta name="theme-color" content="#0f4a9e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23e63946'/%3E%3Cpath d='M22 50V12M22 33a10 10 0 0 1 20 0v17' fill='none' stroke='%2314141f' stroke-width='13' stroke-linecap='round'/%3E%3Cpath d='M22 50V12M22 33a10 10 0 0 1 20 0v17' fill='none' stroke='%23ffd60a' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Caveat:wght@500&display=swap">
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0f4a9e;
+    color: #e6f0ff;
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  body.hero { background: #c81d25; }
+  canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: pointer;
+  }
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  #hint {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    margin: 0;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0.7;
+    transition: opacity 0.6s;
+  }
+  #hint.gone { opacity: 0; }
+  #hint .touch { display: none; }
+  @media (hover: none) {
+    #hint .mouse { display: none; }
+    #hint .touch { display: inline; }
+  }
+  body.hero #hint {
+    font: 19px/1 Bangers, Impact, sans-serif;
+    letter-spacing: 0.06em;
+    color: #fff;
+    text-shadow: 2px 2px 0 #14141f;
+  }
+  .corner {
+    position: fixed;
+    top: max(12px, env(safe-area-inset-top));
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    border: 1px solid rgba(230, 240, 255, 0.4);
+    border-radius: 18px;
+    background: rgba(8, 30, 70, 0.35);
+    color: inherit;
+    font: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .corner:hover, .corner:focus-visible { border-color: #fff; }
+  body.hero .corner {
+    border: 2px solid #14141f;
+    background: #ffd60a;
+    color: #14141f;
+    box-shadow: 3px 3px 0 #14141f;
+  }
+  #sound { right: max(12px, env(safe-area-inset-right)); width: 36px; padding: 0; justify-content: center; }
+  #sound svg { width: 20px; height: 20px; }
+  #sound .off { display: none; }
+  #sound[aria-pressed="false"] .on { display: none; }
+  #sound[aria-pressed="false"] .off { display: inline; }
+  #src { left: max(12px, env(safe-area-inset-left)); }
+</style>
+</head>
+<body>
+<canvas id="c" role="img" aria-label="The word nerd: its n's stem shoots up and its d's stem drops out, and it becomes hero."></canvas>
+<h1 class="sr" id="word" aria-live="polite">nerd</h1>
+<a class="corner" id="src" href="https://github.com/levilindsey/doodles/tree/HEAD/nerd-hero" target="_blank" rel="noopener">source</a>
+<button class="corner" id="sound" type="button" aria-label="Sound" aria-pressed="true" title="Sound (M)">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/>
+    <path class="on" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>
+    <path class="off" d="M17 9l5 6M22 9l-5 6"/>
+  </svg>
+</button>
+<p id="hint"><span class="mouse">click or press space · drag to scrub</span><span class="touch">tap · drag to scrub</span></p>
+<script>
+(() => {
+'use strict';
+
+// ------------------------------------------------------------------ //
+// Timeline. The whole transformation is a pure function of T (seconds
+// into the transition), so it can be played, reversed and scrubbed.
+// ------------------------------------------------------------------ //
+const T_RELEASE = 0.30;  // the crouch ends and the d's stem lets go
+const T_N = 0.58;        // the n's stem shoots up
+const T_IMPACT = 0.72;   // hero (the d's stem clears the bowl right now)
+const SHOCK_DUR = 0.95;  // shockwave travel time to the far corner
+const T_END = 2.3;
+const REWIND = 1.5;      // reverse playback speed
+const GRAVITY = 19.3;    // x-heights per s², for the falling stem
+
+// ------------------------------------------------------------------ //
+// Letterforms: monoline geometric strokes in units where the x-height
+// is 1 and y points up from the baseline.
+// ------------------------------------------------------------------ //
+const ASC = 1.7;                 // ascender height
+const MID = ASC / 2;
+const ARCH = 0.42;               // radius of the n/h arch and the r's arm
+const E_END = Math.PI * 2 - 0.82;
+const R_END = 0.95;
+const GAP = 0.47;
+const X_N = 0;
+const X_E = X_N + 2 * ARCH + GAP;
+const X_R = X_E + 1 + GAP;
+const X_D = X_R + 0.66 + GAP - 0.05;
+const WORD_W = X_D + 1;
+const L0 = -WORD_W / 2;
+const STEM_X = L0 + X_D + 1;     // the d's stem is tangent to its bowl
+
+const SW_NERD = 0.13, SW_HERO = 0.21, OUTLINE = 0.065;
+const EXTRUDE_STEPS = 8, EXTRUDE_STEP = 0.016;
+
+const C = {
+  nerdIn: '#1a5cb3', nerdOut: '#0a2a62',
+  grid: [190, 220, 255],
+  ink: '#f2f8ff', glow: 'rgba(140, 190, 255, 0.6)',
+  anno: 'rgba(205, 228, 255, 0.85)',
+  heroIn: '#ff5a3c', heroOut: '#b0101c',
+  ray: 'rgba(255, 196, 140, 0.22)',
+  dot: [110, 6, 20],
+  fill: '#ffd60a', glint: '#fffbe8', line: '#14141f', extrude: '#1d3557',
+};
+
+const EQUATIONS = [
+  'E = mc²', 'a² + b² = c²', 'e^iπ + 1 = 0', '∇ × B = μ₀J', 'F = ma',
+  'Δx Δp ≥ ħ/2', 'O(n log n)', 'λ = h/p', 'Σ 1/n² = π²/6', 'PV = nRT',
+  'sin²θ + cos²θ = 1', 'x = (−b ± √(b² − 4ac)) / 2a', 'while (!hero) study();',
+  '0b101010', '∂u/∂t = α∇²u', 'git commit -m "wip"', '∫ eˣ dx = eˣ + C',
+];
+
+// ------------------------------------------------------------------ //
+// Math helpers.
+// ------------------------------------------------------------------ //
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const clamp01 = v => clamp(v, 0, 1);
+const smooth = t => t * t * (3 - 2 * t);
+const easeOutCubic = t => 1 - (1 - t) ** 3;
+// Damped spring from 0 to 1, with overshoot; t in seconds.
+function spring(t, w, z) {
+  if (t <= 0) return 0;
+  const wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t));
+}
+const wob = (t, k) => (Math.sin(t * 91.3 + k * 1.7) + 0.6 * Math.sin(t * 57.1 + k * 4.1)) / 1.6;
+function mulberry32(a) {
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rgba = (c, a) => `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`;
+const mix3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+// Seeded effects, in word units so a resize keeps them.
+const rnd = mulberry32(1729);
+const STARS = Array.from({ length: 18 }, () => ({
+  ux: L0 + rnd() * WORD_W, uy: rnd() * ASC,
+  jitter: (rnd() - 0.5) * 0.9, reach: 1.6 + rnd() * 2.6,
+  size: 0.07 + rnd() * 0.11, spin: (rnd() - 0.5) * 9,
+  white: rnd() < 0.35, delay: rnd() * 0.07,
+}));
+const STREAKS = Array.from({ length: 30 }, (_, i) => ({
+  a: (i / 30) * TAU + (rnd() - 0.5) * 0.15, speed: 3 + rnd() * 3, len: 0.5 + rnd() * 0.9,
+  width: 1.5 + rnd() * 2.5, delay: rnd() * 0.08,
+}));
+
+// ------------------------------------------------------------------ //
+// DOM and state.
+// ------------------------------------------------------------------ //
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const wordEl = document.getElementById('word');
+const hintEl = document.getElementById('hint');
+const soundBtn = document.getElementById('sound');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ?t=<seconds> freezes the transition (and the idle clock) at T.
+const params = new URLSearchParams(location.search);
+const frozen = params.has('t');
+let T = frozen ? clamp(parseFloat(params.get('t')) || 0, 0, T_END) : 0;
+let dir = 0;            // playback direction: -1, 0, +1
+let clock = 0;          // idle-animation time
+let last = performance.now();
+let interacted = false;
+let shownHero = null;
+
+let W = 0, H = 0, dpr = 1, U = 1, cx = 0, baseY = 0, ox = 0, oy = 0, Rc = 1, RMAX = 1, band = 1, cell = 24;
+let nerdGrad = null, heroGrad = null, equations = [];
+
+function layout() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  U = Math.min(W * 0.88 / (WORD_W + 1.3), H * 0.2);  // room for the dimension marks
+  cx = W / 2;
+  baseY = H / 2 + 0.78 * U;
+  ox = cx;
+  oy = baseY - MID * U;
+  Rc = Math.hypot(Math.max(ox, W - ox), Math.max(oy, H - oy));
+  cell = clamp(U * 0.13, 18, 34);
+  band = 2.6 * U;                 // width of the grid-to-dots transition
+  RMAX = Rc + band + cell;        // the wave ends once the corners are all dots
+  nerdGrad = ctx.createRadialGradient(ox, oy, 0, ox, oy, Rc);
+  nerdGrad.addColorStop(0, C.nerdIn);
+  nerdGrad.addColorStop(1, C.nerdOut);
+  heroGrad = ctx.createRadialGradient(ox, oy, 0, ox, oy, Rc);
+  heroGrad.addColorStop(0, C.heroIn);
+  heroGrad.addColorStop(1, C.heroOut);
+  placeEquations();
+}
+
+function placeEquations() {
+  const r = mulberry32(7);
+  const fs = clamp(U * 0.17, 15, 30);
+  const box = {
+    x0: cx + (L0 - 0.9) * U, x1: cx + (-L0 + 0.9) * U,
+    y0: baseY - (ASC + 0.45) * U, y1: baseY + 0.95 * U,
+  };
+  const minD = Math.min(W, H) * 0.19;
+  equations = [];
+  for (const text of EQUATIONS) {
+    const halfW = text.length * fs * 0.22 + 8;
+    for (let tries = 0; tries < 60; tries++) {
+      const x = clamp(W * (0.05 + r() * 0.9), halfW + 6, W - halfW - 6);
+      const y = H * (0.07 + r() * 0.86);
+      if (x + halfW > box.x0 && x - halfW < box.x1 && y + fs > box.y0 && y - fs < box.y1) continue;
+      if (equations.some(e => Math.abs(e.x - x) < Math.max(minD, halfW + e.halfW) && Math.abs(e.y - y) < fs * 1.6)) continue;
+      if (equations.some(e => Math.hypot(e.x - x, e.y - y) < minD)) continue;
+      equations.push({ text, x, y, halfW, fs, rot: (r() - 0.5) * 0.3, phase: r() * TAU, spin: (r() - 0.5) * 7 });
+      break;
+    }
+  }
+}
+
+// ------------------------------------------------------------------ //
+// Pose: everything the word does, as a function of T.
+// ------------------------------------------------------------------ //
+function pose() {
+  const heroT = T - T_IMPACT;
+  const hero = heroT >= 0;
+  // Anticipation: squash toward the baseline, then spring through a stretch.
+  const crouch = T < T_RELEASE
+    ? 0.07 * easeOutCubic(T / T_RELEASE)
+    : 0.07 * Math.exp(-(T - T_RELEASE) * 9) * Math.cos((T - T_RELEASE) * 24);
+  const nTop = 1 + (ASC - 1) * spring(T - T_N, 26, 0.42);
+  // The d's stem slides down through its bowl and keeps falling.
+  const tf = Math.max(0, T - T_RELEASE);
+  const dy = 0.5 * GRAVITY * tf * tf;
+  const free = Math.max(0, dy - ASC);
+  const rot = -0.22 * free;
+  const sx = STEM_X + 0.07 * free, sy = MID - dy;
+  const stem = {
+    x1: sx - Math.sin(rot) * MID, y1: sy - Math.cos(rot) * MID,
+    x2: sx + Math.sin(rot) * MID, y2: sy + Math.cos(rot) * MID,
+    dy,
+  };
+  const flex = spring(heroT, 20, 0.3);
+  return {
+    heroT, hero, nTop, stem, crouch,
+    sw: SW_NERD + (SW_HERO - SW_NERD) * flex,
+    outline: hero ? OUTLINE * clamp01(heroT / 0.06) : 0,
+    lean: hero ? 0.2 * spring(heroT, 14, 0.45) : 0,
+    scale: 1 + 0.07 * spring(heroT, 18, 0.35),
+    bob: hero ? 0.025 * Math.sin(clock * 2.1) : 0,
+  };
+}
+
+// When the falling stem's top leaves the bottom of the screen.
+function tClank() {
+  const dyOff = ASC + (H - baseY) / U + 0.2;
+  return T_RELEASE + Math.sqrt(2 * dyOff / GRAVITY);
+}
+
+function wordMatrix(p) {
+  return new DOMMatrix()
+    .translateSelf(cx, baseY)
+    .scaleSelf(U, -U)
+    .translateSelf(0, p.bob)
+    .scaleSelf(1 + 0.6 * p.crouch, 1 - p.crouch)
+    .translateSelf(0, MID)
+    .scaleSelf(p.scale, p.scale)
+    .multiplySelf(new DOMMatrix([1, 0, p.lean, 1, 0, 0]))
+    .translateSelf(0, -MID);
+}
+
+function wordPath(p) {
+  const path = new Path2D();
+  let x = L0 + X_N;                       // n, or h once the stem is up
+  path.moveTo(x, 0);
+  path.lineTo(x, p.nTop);
+  path.moveTo(x, 1 - ARCH);
+  path.arc(x + ARCH, 1 - ARCH, ARCH, Math.PI, 0, true);
+  path.lineTo(x + 2 * ARCH, 0);
+  x = L0 + X_E;                           // e
+  path.moveTo(x, 0.5);
+  path.lineTo(x + 1, 0.5);
+  path.arc(x + 0.5, 0.5, 0.5, 0, E_END, false);
+  x = L0 + X_R;                           // r
+  path.moveTo(x, 0);
+  path.lineTo(x, 1);
+  path.moveTo(x, 1 - ARCH);
+  path.arc(x + ARCH, 1 - ARCH, ARCH, Math.PI, R_END, true);
+  x = L0 + X_D;                           // the bowl of d, which is an o
+  path.moveTo(x + 1, 0.5);
+  path.arc(x + 0.5, 0.5, 0.5, 0, TAU);
+  const s = p.stem;                       // the d's stem, wherever it is
+  if (baseY - Math.max(s.y1, s.y2) * U < H + 60) {
+    path.moveTo(s.x1, s.y1);
+    path.lineTo(s.x2, s.y2);
+  }
+  return path;
+}
+
+// ------------------------------------------------------------------ //
+// Rendering.
+// ------------------------------------------------------------------ //
+function render() {
+  const p = pose();
+  const { heroT, hero } = p;
+  if (hero !== shownHero) {
+    shownHero = hero;
+    const w = hero ? 'hero' : 'nerd';
+    document.title = w;
+    wordEl.textContent = w;
+    document.body.classList.toggle('hero', hero);
+  }
+
+  let sx = 0, sy = 0;
+  if (!reduceMotion) {
+    if (hero) {
+      const a = 0.11 * U * Math.exp(-heroT * 8);
+      sx += a * wob(T, 1);
+      sy += a * wob(T, 2);
+    }
+    const tc = T - tClank();
+    if (tc >= 0) {
+      const a = 0.04 * U * Math.exp(-tc * 14);
+      sx += a * wob(T, 3);
+      sy += a * wob(T, 4);
+    }
+    if (T > 0.04 && T < T_RELEASE) sx += 0.012 * U * Math.sin(T * 130);
+  }
+  const screen = new DOMMatrix([dpr, 0, 0, dpr, dpr * sx, dpr * sy]);
+  ctx.setTransform(screen);
+
+  const u = clamp01(heroT / SHOCK_DUR);
+  const R = hero ? RMAX * easeOutCubic(u) : -1;
+
+  drawBackground(R, heroT);
+  drawGrid(R);
+  drawEquations();
+  if (hero && u < 1) drawShockwave(R, u);
+  if (hero && !reduceMotion) drawStreaks(heroT);
+
+  const m = wordMatrix(p);
+  if (!hero) drawAnnotations(m, p);
+  drawWord(screen.multiply(m), p);
+  ctx.setTransform(screen);
+  if (hero && !reduceMotion) drawStars(m, heroT);
+  drawClank(m);
+
+  if (hero) {
+    const flash = (reduceMotion ? 0.25 : 0.85) * Math.exp(-heroT * 10);
+    if (flash > 0.01) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = `rgba(255, 255, 255, ${flash})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+}
+
+function drawBackground(R, heroT) {
+  const pad = 0.2 * U;
+  if (R < Rc) {
+    ctx.fillStyle = nerdGrad;
+    ctx.fillRect(-pad, -pad, W + 2 * pad, H + 2 * pad);
+  }
+  if (R <= 0) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(ox, oy, R, 0, TAU);
+  ctx.clip();
+  ctx.fillStyle = heroGrad;
+  ctx.fillRect(-pad, -pad, W + 2 * pad, H + 2 * pad);
+  // Sunburst, kicked into a spin by the impact.
+  const n = 18;
+  const rot = clock * 0.07 + 0.7 * easeOutCubic(clamp01(heroT / 1.3));
+  const far = Rc * 1.5;
+  ctx.fillStyle = C.ray;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a0 = rot + (i / n) * TAU, a1 = a0 + TAU / n / 2;
+    ctx.moveTo(ox, oy);
+    ctx.lineTo(ox + Math.cos(a0) * far, oy + Math.sin(a0) * far);
+    ctx.lineTo(ox + Math.cos(a1) * far, oy + Math.sin(a1) * far);
+    ctx.closePath();
+  }
+  ctx.fill();
+  ctx.restore();
+}
+
+// Blueprint graph paper that the shockwave turns into halftone dots: each
+// intersection's grid arms retract into it while a dot grows in its place.
+const BUCKETS = 6;
+function drawGrid(R) {
+  const minor = [], major = [];
+  for (let b = 0; b < BUCKETS; b++) { minor.push(new Path2D()); major.push(new Path2D()); }
+  const dots = new Path2D();
+  const i0 = Math.floor(-ox / cell) - 1, i1 = Math.ceil((W - ox) / cell) + 1;
+  const j0 = Math.floor(-oy / cell) - 1, j1 = Math.ceil((H - oy) / cell) + 1;
+  const rMax = cell * 0.47;
+  for (let j = j0; j <= j1; j++) {
+    const y = oy + j * cell;
+    const majorRow = j % 5 === 0;
+    for (let i = i0; i <= i1; i++) {
+      const x = ox + i * cell;
+      const d = Math.hypot(x - ox, y - oy);
+      const q = R > 0 ? clamp01((R - d) / band) : 0;
+      if (q < 1) {
+        const a = (1 - q) * cell / 2;
+        const b = Math.min(BUCKETS - 1, Math.floor(q * BUCKETS));
+        const h = majorRow ? major[b] : minor[b];
+        h.moveTo(x - a, y);
+        h.lineTo(x + a, y);
+        const v = i % 5 === 0 ? major[b] : minor[b];
+        v.moveTo(x, y - a);
+        v.lineTo(x, y + a);
+      }
+      if (q > 0) {
+        const k = smooth(clamp01((d / Rc - 0.12) / 0.88));
+        const breathe = 1 + 0.12 * Math.sin(clock * 2.2 - d / (cell * 3));
+        const r = q * rMax * (0.12 + 0.88 * k) * breathe;
+        if (r > 0.3) {
+          dots.moveTo(x + r, y);
+          dots.arc(x, y, r, 0, TAU);
+        }
+      }
+    }
+  }
+  for (let b = 0; b < BUCKETS; b++) {
+    const t = (b + 0.5) / BUCKETS;
+    const col = mix3(C.grid, C.dot, t);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = rgba(col, 0.15 + 0.2 * t);
+    ctx.stroke(minor[b]);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = rgba(col, 0.32 + 0.1 * t);
+    ctx.stroke(major[b]);
+  }
+  ctx.fillStyle = rgba(C.dot, 0.32);
+  ctx.fill(dots);
+}
+
+function drawEquations() {
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const e of equations) {
+    const dx = e.x - ox, dy = e.y - oy;
+    const d = Math.hypot(dx, dy) || 1;
+    const tHit = T_IMPACT + (1 - Math.cbrt(1 - Math.min(d / RMAX, 1))) * SHOCK_DUR;
+    const bt = T - tHit;
+    if (bt > 0.45) continue;
+    const drift = reduceMotion ? 0 : 1;
+    let x = e.x + drift * Math.sin(clock * 0.31 + e.phase) * 6;
+    let y = e.y + drift * Math.cos(clock * 0.23 + e.phase) * 4;
+    let rot = e.rot, scale = 1, alpha = 0.3;
+    if (bt > 0) {  // blown away by the shockwave
+      const push = Rc * (0.9 * bt + 2.2 * bt * bt);
+      x += (dx / d) * push;
+      y += (dy / d) * push;
+      rot += e.spin * bt;
+      scale += bt * 0.9;
+      alpha *= 1 - bt / 0.45;
+    }
+    ctx.setTransform(dpr * scale * Math.cos(rot), dpr * scale * Math.sin(rot),
+      -dpr * scale * Math.sin(rot), dpr * scale * Math.cos(rot), dpr * x, dpr * y);
+    ctx.font = `500 ${e.fs}px Caveat, "Segoe Print", "Comic Sans MS", cursive`;
+    ctx.fillStyle = `rgba(215, 232, 255, ${alpha})`;
+    ctx.fillText(e.text, 0, 0);
+  }
+  ctx.restore();
+}
+
+function drawShockwave(R, u) {
+  ctx.save();
+  ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * (1 - u) ** 1.5})`;
+  ctx.lineWidth = 0.2 * U * (1 - u) + 1;
+  ctx.beginPath();
+  ctx.arc(ox, oy, R, 0, TAU);
+  ctx.stroke();
+  ctx.strokeStyle = `rgba(255, 240, 180, ${0.5 * (1 - u)})`;
+  ctx.lineWidth = 0.06 * U * (1 - u) + 1;
+  ctx.beginPath();
+  ctx.arc(ox, oy, R * 0.8, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawStreaks(heroT) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#fff';
+  const rx = (-L0 + 0.5) * U, ry = (MID + 0.5) * U;
+  for (const s of STREAKS) {
+    const t = heroT - s.delay;
+    if (t <= 0 || t > 0.45) continue;
+    const c = Math.cos(s.a), sn = Math.sin(s.a);
+    const r0 = 1 / Math.hypot(c / rx, sn / ry);
+    const head = r0 + t * s.speed * U;
+    const tail = head - s.len * U * (1 - t / 0.45);
+    ctx.globalAlpha = 0.9 * (1 - t / 0.45);
+    ctx.lineWidth = s.width;
+    ctx.beginPath();
+    ctx.moveTo(ox + c * tail, oy + sn * tail);
+    ctx.lineTo(ox + c * head, oy + sn * head);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Nerd-only technical-drawing marks: guides, dimensions, a caption.
+function drawAnnotations(m, p) {
+  const P = (x, y) => m.transformPoint({ x, y });
+  const fsMono = clamp(U * 0.075, 10, 13);
+  const narrow = W < 600;
+  ctx.save();
+  ctx.strokeStyle = C.anno;
+  ctx.fillStyle = C.anno;
+  ctx.lineWidth = 1;
+  ctx.font = `${fsMono}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
+
+  const gx0 = Math.max(10, P(L0 - 0.75, 0).x);
+  const gx1 = Math.min(W - 10, P(-L0 + 1.55, 0).x);
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  for (const [y, label] of [[0, 'baseline'], [1, 'x-height'], [ASC, 'ascender']]) {
+    const py = P(0, y).y;
+    ctx.globalAlpha = 0.4;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(gx0, py);
+    ctx.lineTo(gx1, py);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (!narrow) {
+      ctx.globalAlpha = 0.85;
+      ctx.fillText(label, gx1, py - 3);
+    }
+  }
+
+  ctx.globalAlpha = 0.85;
+  const dim = (x, ya, yb, label, side) => {
+    const a = P(x, ya), b = P(x, yb);
+    const tick = 5;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.moveTo(a.x - tick, a.y); ctx.lineTo(a.x + tick, a.y);
+    ctx.moveTo(b.x - tick, b.y); ctx.lineTo(b.x + tick, b.y);
+    for (const [pt, s] of [[a, 1], [b, -1]]) {  // arrowheads, pointing outward
+      const dir = Math.sign(b.y - a.y) || 1;
+      ctx.moveTo(pt.x - 3.5, pt.y + s * dir * 7); ctx.lineTo(pt.x, pt.y); ctx.lineTo(pt.x + 3.5, pt.y + s * dir * 7);
+    }
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(a.x + side * (fsMono * 0.9), (a.y + b.y) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+  };
+  dim(L0 - 0.42, 0, p.nTop, p.nTop.toFixed(2), -1);
+  const top = ASC - p.stem.dy;
+  if (baseY - top * U < H) dim(-L0 + 0.42, top - ASC, top, top > 0.45 ? top.toFixed(2) : '?!', 1);
+
+  // Construction centers of the two bowls.
+  for (const x of [L0 + X_E + 0.5, L0 + X_D + 0.5]) {
+    const c = P(x, 0.5);
+    ctx.beginPath();
+    ctx.moveTo(c.x - 6, c.y); ctx.lineTo(c.x + 6, c.y);
+    ctx.moveTo(c.x, c.y - 6); ctx.lineTo(c.x, c.y + 6);
+    ctx.stroke();
+  }
+
+  const cap = P(0, -0.62);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `500 ${clamp(U * 0.2, 17, 34)}px Caveat, "Segoe Print", "Comic Sans MS", cursive`;
+  ctx.fillText('fig. 1 — nerd (n.)', cap.x, cap.y);
+  ctx.restore();
+}
+
+function drawWord(m, p) {
+  const path = wordPath(p);
+  ctx.setTransform(m);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  if (!p.hero) {
+    ctx.shadowColor = C.glow;
+    ctx.shadowBlur = 0.09 * U * dpr;
+    ctx.strokeStyle = C.ink;
+    ctx.lineWidth = p.sw;
+    ctx.stroke(path);
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    return;
+  }
+  const fat = p.sw + 2 * p.outline;
+  // Block extrusion down and to the right, with its own outline.
+  ctx.save();
+  ctx.translate(EXTRUDE_STEPS * EXTRUDE_STEP, -EXTRUDE_STEPS * EXTRUDE_STEP);
+  ctx.strokeStyle = C.line;
+  ctx.lineWidth = fat + 0.03;
+  ctx.stroke(path);
+  ctx.restore();
+  ctx.strokeStyle = C.extrude;
+  ctx.lineWidth = fat;
+  for (let i = EXTRUDE_STEPS; i >= 1; i--) {
+    ctx.save();
+    ctx.translate(i * EXTRUDE_STEP, -i * EXTRUDE_STEP);
+    ctx.stroke(path);
+    ctx.restore();
+  }
+  ctx.strokeStyle = C.line;
+  ctx.stroke(path);
+  // Fill, with a glint that sweeps across after the impact and now and then.
+  let g = -1;
+  const g1 = (p.heroT - 0.3) / 0.7;
+  if (g1 >= 0 && g1 <= 1) g = g1;
+  else if (p.heroT > 1.0 && !reduceMotion) {
+    const g2 = (clock % 4.2) / 0.7;
+    if (g2 <= 1) g = g2;
+  }
+  if (g >= 0) {
+    const grad = ctx.createLinearGradient(L0 - 0.6, -0.3, -L0 + 0.6, ASC + 0.3);
+    const w = 0.07, at = -w + g * (1 + 2 * w);
+    grad.addColorStop(0, C.fill);
+    grad.addColorStop(clamp01(at - w), C.fill);
+    grad.addColorStop(clamp01(at), C.glint);
+    grad.addColorStop(clamp01(at + w), C.fill);
+    grad.addColorStop(1, C.fill);
+    ctx.strokeStyle = grad;
+  } else {
+    ctx.strokeStyle = C.fill;
+  }
+  ctx.lineWidth = p.sw;
+  ctx.stroke(path);
+  // A specular highlight along each stroke's upper-left edge.
+  ctx.save();
+  ctx.translate(-0.024, 0.032);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+  ctx.lineWidth = p.sw * 0.24;
+  ctx.stroke(path);
+  ctx.restore();
+}
+
+function drawStars(m, heroT) {
+  const c = m.transformPoint({ x: 0, y: MID });
+  for (const s of STARS) {
+    const t = heroT - s.delay;
+    if (t <= 0 || t > 1.15) continue;
+    const o = m.transformPoint({ x: s.ux, y: s.uy });
+    const a = Math.atan2(o.y - c.y, o.x - c.x) + s.jitter;
+    const dist = s.reach * U * (1 - Math.exp(-4.5 * t));
+    const x = o.x + Math.cos(a) * dist, y = o.y + Math.sin(a) * dist;
+    const size = s.size * U * Math.min(1, t / 0.08) * (1 - smooth(clamp01((t - 0.45) / 0.7)));
+    if (size < 0.5) continue;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(s.spin * t);
+    ctx.beginPath();
+    for (let k = 0; k < 8; k++) {
+      const r = k % 2 ? size * 0.32 : size;
+      const ang = (k / 8) * TAU;
+      ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+    }
+    ctx.closePath();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1.5, size * 0.18);
+    ctx.strokeStyle = C.line;
+    ctx.stroke();
+    ctx.fillStyle = s.white ? '#fff' : C.fill;
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// The d's stem lands somewhere below the screen.
+function drawClank(m) {
+  const tc = T - tClank();
+  if (tc < 0 || tc > 1.1) return;
+  const fs = clamp(U * 0.36, 26, 64);
+  const x = clamp(m.transformPoint({ x: STEM_X, y: 0 }).x, fs * 1.6, W - fs * 1.6);
+  const y = H - fs * 0.85;
+  const pop = spring(tc, 30, 0.35);
+  const alpha = 1 - smooth(clamp01((tc - 0.6) / 0.45));
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (const a of [-2.3, -1.9, -1.25, -0.85]) {
+    const r0 = fs * (0.9 + 0.2 * pop), r1 = fs * (1.1 + 0.45 * pop);
+    ctx.moveTo(Math.cos(a) * r0, fs * 0.85 + Math.sin(a) * r0 * 0.7);
+    ctx.lineTo(Math.cos(a) * r1, fs * 0.85 + Math.sin(a) * r1 * 0.7);
+  }
+  ctx.stroke();
+  ctx.rotate(-0.14 + 0.05 * Math.sin(tc * 40) * Math.exp(-tc * 6));
+  ctx.scale(pop, pop);
+  ctx.font = `${fs}px Bangers, Impact, "Arial Black", sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = fs * 0.16;
+  ctx.strokeStyle = C.line;
+  ctx.strokeText('CLANK!', 0, 0);
+  ctx.fillStyle = C.fill;
+  ctx.fillText('CLANK!', 0, 0);
+  ctx.restore();
+}
+
+// ------------------------------------------------------------------ //
+// Sound: everything is synthesized on the fly.
+// ------------------------------------------------------------------ //
+let soundOn = true;
+try { soundOn = localStorage.getItem('nerdhero.sound') !== 'off'; } catch (_) { /* storage blocked */ }
+let actx = null, master = null, noise = null;
+
+function unlockAudio() {
+  if (actx || !soundOn) {
+    if (actx && actx.state === 'suspended') actx.resume();
+    return;
+  }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  actx = new AC();
+  const comp = actx.createDynamicsCompressor();
+  master = actx.createGain();
+  master.gain.value = 0.5;
+  master.connect(comp);
+  comp.connect(actx.destination);
+  noise = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+  const ch = noise.getChannelData(0);
+  for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+}
+const audible = () => soundOn && actx && actx.state === 'running';
+
+function envGain(t0, attack, peak, hold, release) {
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
+  g.gain.setValueAtTime(peak, t0 + attack + hold);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + hold + release);
+  g.connect(master);
+  return g;
+}
+
+function slideWhistle(f0, f1, dur) {
+  const t0 = actx.currentTime;
+  const g = envGain(t0, 0.03, 0.2, dur - 0.06, 0.08);
+  const o = actx.createOscillator();
+  o.frequency.setValueAtTime(f0, t0);
+  o.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+  const lfo = actx.createOscillator();
+  const depth = actx.createGain();
+  lfo.frequency.value = 8;
+  depth.gain.value = 18;
+  lfo.connect(depth).connect(o.frequency);
+  o.connect(g);
+  o.start(t0); lfo.start(t0);
+  o.stop(t0 + dur + 0.1); lfo.stop(t0 + dur + 0.1);
+}
+
+function brass(freqs, at, dur, peak, cutoff) {
+  const t0 = actx.currentTime + at;
+  const g = envGain(t0, 0.025, peak, dur, 0.25);
+  const f = actx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.Q.value = 2;
+  f.frequency.setValueAtTime(350, t0);
+  f.frequency.exponentialRampToValueAtTime(cutoff, t0 + 0.06);
+  f.frequency.exponentialRampToValueAtTime(cutoff * 0.45, t0 + dur + 0.25);
+  f.connect(g);
+  for (const fq of freqs) {
+    for (const det of [-7, 7]) {
+      const o = actx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = fq;
+      o.detune.value = det;
+      o.connect(f);
+      o.start(t0);
+      o.stop(t0 + dur + 0.3);
+    }
+  }
+}
+
+function boom() {
+  const t0 = actx.currentTime;
+  const o = actx.createOscillator();
+  o.frequency.setValueAtTime(150, t0);
+  o.frequency.exponentialRampToValueAtTime(36, t0 + 0.4);
+  o.connect(envGain(t0, 0.005, 0.9, 0.02, 0.5));
+  o.start(t0); o.stop(t0 + 0.6);
+  const n = actx.createBufferSource();
+  n.buffer = noise;
+  const f = actx.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.setValueAtTime(5000, t0);
+  f.frequency.exponentialRampToValueAtTime(250, t0 + 0.35);
+  n.connect(f).connect(envGain(t0, 0.003, 0.45, 0.01, 0.35));
+  n.start(t0); n.stop(t0 + 0.45);
+  brass([261.63, 329.63, 392.0, 523.25], 0, 0.75, 0.07, 3200);  // C major: ta-DAAA
+}
+
+function clank() {
+  const t0 = actx.currentTime + 0.05;  // it is a long way down
+  [[820, 0.07, 0.5], [1387, 0.05, 0.35], [2123, 0.035, 0.25], [3011, 0.025, 0.18]].forEach(([fq, v, d]) => {
+    const o = actx.createOscillator();
+    o.frequency.value = fq;
+    o.connect(envGain(t0, 0.002, v, 0, d));
+    o.start(t0); o.stop(t0 + d + 0.05);
+  });
+  const n = actx.createBufferSource();
+  n.buffer = noise;
+  const f = actx.createBiquadFilter();
+  f.type = 'highpass';
+  f.frequency.value = 2500;
+  n.connect(f).connect(envGain(t0, 0.001, 0.15, 0, 0.04));
+  n.start(t0); n.stop(t0 + 0.08);
+}
+
+function sadTrombone() {
+  const t0 = actx.currentTime;
+  const notes = [[233.08, 0, 0.3], [220.0, 0.33, 0.3], [207.65, 0.66, 0.3], [196.0, 0.99, 1.0]];
+  for (const [fq, at, dur] of notes) {
+    const t = t0 + at;
+    const g = envGain(t, 0.04, 0.16, dur - 0.1, 0.18);
+    const f = actx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.Q.value = 4;
+    f.frequency.setValueAtTime(300, t);
+    f.frequency.exponentialRampToValueAtTime(1300, t + 0.08);  // wah
+    f.frequency.exponentialRampToValueAtTime(500, t + dur);
+    f.connect(g);
+    const o = actx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(fq * 1.03, t);
+    o.frequency.exponentialRampToValueAtTime(fq, t + 0.07);
+    if (dur > 0.5) {  // the last note wobbles
+      const lfo = actx.createOscillator();
+      const depth = actx.createGain();
+      lfo.frequency.value = 5.5;
+      depth.gain.setValueAtTime(0, t);
+      depth.gain.linearRampToValueAtTime(7, t + 0.35);
+      lfo.connect(depth).connect(o.frequency);
+      lfo.start(t); lfo.stop(t + dur + 0.25);
+    }
+    o.connect(f);
+    o.start(t); o.stop(t + dur + 0.25);
+  }
+}
+
+// Cues fire as forward playback crosses their times.
+function fireCues(prev, cur) {
+  if (cur <= prev || !audible()) return;
+  const cues = [
+    [T_RELEASE, () => slideWhistle(1500, 380, T_IMPACT - T_RELEASE + 0.08)],
+    [T_N, () => { brass([392.0], 0, 0.04, 0.06, 2600); brass([392.0], 0.075, 0.04, 0.06, 2600); }],
+    [T_IMPACT, boom],
+    [tClank(), clank],
+  ];
+  for (const [t, play] of cues) if (prev < t && t <= cur) play();
+}
+
+// ------------------------------------------------------------------ //
+// Playback and input.
+// ------------------------------------------------------------------ //
+function setDir(d) {
+  if (d < 0 && dir >= 0 && T >= T_IMPACT && audible()) sadTrombone();
+  dir = d;
+}
+function toggle() {
+  setDir(dir === 0 ? (T < T_IMPACT ? 1 : -1) : -dir);
+}
+function noteInteraction() {
+  if (interacted) return;
+  interacted = true;
+  hintEl.classList.add('gone');
+}
+
+let drag = null;
+canvas.addEventListener('pointerdown', e => {
+  unlockAudio();
+  drag = { id: e.pointerId, x: e.clientX, y: e.clientY, t: T, moved: false };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = e.clientX - drag.x;
+  if (!drag.moved && Math.hypot(dx, e.clientY - drag.y) < 8) return;
+  drag.moved = true;
+  dir = 0;
+  T = clamp(drag.t + (dx / (W * 0.7)) * T_END, 0, T_END);
+});
+const endDrag = e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const wasDrag = drag.moved;
+  drag = null;
+  noteInteraction();
+  if (!wasDrag) toggle();
+  else if (T > 0 && T < T_END) dir = T >= T_IMPACT ? 1 : -1;  // settle quietly
+};
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', e => { if (drag && e.pointerId === drag.id) drag = null; });
+
+window.addEventListener('keydown', e => {
+  if (e.target.closest && e.target.closest('a, button')) return;
+  if (e.key === ' ' || e.key === 'Enter') {
+    e.preventDefault();
+    if (e.repeat) return;
+    unlockAudio();
+    noteInteraction();
+    toggle();
+  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    noteInteraction();
+    dir = 0;
+    T = clamp(T + (e.key === 'ArrowRight' ? 0.04 : -0.04), 0, T_END);
+  } else if (e.key === 'm' || e.key === 'M') {
+    setSound(!soundOn);
+  }
+});
+
+function setSound(on) {
+  soundOn = on;
+  soundBtn.setAttribute('aria-pressed', String(on));
+  try { localStorage.setItem('nerdhero.sound', on ? 'on' : 'off'); } catch (_) { /* storage blocked */ }
+  if (on) unlockAudio();
+  else if (actx) actx.suspend();
+}
+soundBtn.addEventListener('click', () => setSound(!soundOn));
+setSound(soundOn);
+
+window.addEventListener('resize', layout);
+layout();
+
+if (frozen) {
+  hintEl.classList.add('gone');
+} else {
+  setTimeout(() => { if (!interacted && dir === 0 && T === 0) setDir(1); }, 1500);
+}
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (!frozen) clock += dt;
+  if (dir !== 0 && !(drag && drag.moved)) {
+    const prev = T;
+    T = clamp(T + dir * dt * (dir > 0 ? 1 : REWIND), 0, T_END);
+    fireCues(prev, T);
+    if (T === 0 || T === T_END) dir = 0;
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

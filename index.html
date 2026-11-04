@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>doodles</title>
+<meta name="description" content="Small, silly, self-contained web toys by Levi Lindsey.">
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --fg: #1c1b19;
+    --muted: #6b675f;
+    --card: #ffffff;
+    --line: #e2ded5;
+    --accent: #c81d25;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416;
+      --fg: #ecebe8;
+      --muted: #9d9a93;
+      --card: #1d1d21;
+      --line: #2f2f35;
+      --accent: #ff6b5e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 48px 16px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  p.lede { margin: 0 0 32px; color: var(--muted); }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  a.card {
+    display: block;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    color: inherit;
+    text-decoration: none;
+  }
+  a.card:hover, a.card:focus-visible { border-color: var(--accent); }
+  a.card strong { display: block; font-size: 18px; }
+  a.card span { color: var(--muted); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 14px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>doodles</h1>
+  <p class="lede">Small, silly, self-contained web toys.</p>
+  <ul>
+    <li>
+      <a class="card" href="nerd-hero/">
+        <strong>nerd → hero</strong>
+        <span>The n's stem shoots up, the d's stem drops out, and the blueprint turns into a comic panel.</span>
+      </a>
+    </li>
+  </ul>
+  <footer>
+    <a href="https://github.com/levilindsey/doodles">source</a> · <a href="https://levi.dev">levi.dev</a>
+  </footer>
+</main>
+</body>
+</html>
