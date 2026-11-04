@@ -26,8 +26,8 @@ next, brief, env (claude-config rules/ledger.md). -->
   unfurls and flaps after the impact.
 - **DD3** · nerd-hero: glasses into a mask. Nerd glasses sit across the
   e and the d's bowl and turn into a domino mask on the hero.
-- **DD4** · nerd-hero: a seesaw. A visible lever under the word, so the
-  d's stem dropping is what flings the n's stem up.
+- **DD4** · nerd-hero: a pulley. A string over the word, so the d's stem
+  reeling into its bowl is what hoists the n's stem up.
 - **DD5** · nerd-hero: x-ray mode. Holding a key shows the hero's
   "skeleton", the original nerd strokes and dimension marks, through the
   comic styling.

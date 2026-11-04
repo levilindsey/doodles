@@ -47,18 +47,19 @@ for (const sz of sizes) {
   }
 }
 
-// Real time: autoplay starts 1.5 s after load.
+// Real time: autoplay starts 1.5 s after load, and the timeline plays at
+// a third of real time (SPEED), so impact lands at 1.5 + 3 * 0.72 s.
 await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
 await page.goto(base, { waitUntil: 'networkidle0' });
 await settle();
 const t0 = Date.now();
-for (const ms of [1000, 2000, 2350, 2600, 3200, 4600]) {
+for (const ms of [1000, 2600, 3300, 3900, 5500, 9000]) {
   await sleep(Math.max(0, ms - (Date.now() - t0)));
   await page.screenshot({ path: `${outDir}/rt${ms}.png` });
 }
 const titleAfterPlay = await page.title();
 await page.mouse.click(640, 400);
-await sleep(2200);
+await sleep(5000);
 await page.screenshot({ path: `${outDir}/rt_back.png` });
 const titleAfterReverse = await page.title();
 await page.mouse.move(300, 400);

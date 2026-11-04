@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>nerd</title>
-<meta name="description" content="The n's stem shoots up, the d's stem drops out, and “nerd” becomes “hero”.">
+<meta name="description" content="The n's stem shoots up, the d's stem shrinks into the o, and “nerd” becomes “hero”.">
 <meta name="theme-color" content="#0f4a9e">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23e63946'/%3E%3Cpath d='M22 50V12M22 33a10 10 0 0 1 20 0v17' fill='none' stroke='%2314141f' stroke-width='13' stroke-linecap='round'/%3E%3Cpath d='M22 50V12M22 33a10 10 0 0 1 20 0v17' fill='none' stroke='%23ffd60a' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -94,7 +94,7 @@
 </style>
 </head>
 <body>
-<canvas id="c" role="img" aria-label="The word nerd: its n's stem shoots up and its d's stem drops out, and it becomes hero."></canvas>
+<canvas id="c" role="img" aria-label="The word nerd: its n's stem shoots up and its d's stem shrinks into the o, and it becomes hero."></canvas>
 <h1 class="sr" id="word" aria-live="polite">nerd</h1>
 <a class="corner" id="src" href="https://github.com/levilindsey/doodles/tree/HEAD/nerd-hero" target="_blank" rel="noopener">source</a>
 <button class="corner" id="sound" type="button" aria-label="Sound" aria-pressed="true" title="Sound (M)">
@@ -110,16 +110,17 @@
 'use strict';
 
 // ------------------------------------------------------------------ //
-// Timeline. The whole transformation is a pure function of T (seconds
-// into the transition), so it can be played, reversed and scrubbed.
+// Timeline. The whole transformation is a pure function of T (timeline
+// seconds into the transition), so it can be played, reversed and
+// scrubbed. Playback advances T at SPEED, so 1 timeline second takes 3.
 // ------------------------------------------------------------------ //
 const T_RELEASE = 0.30;  // the crouch ends and the d's stem lets go
 const T_N = 0.58;        // the n's stem shoots up
-const T_IMPACT = 0.72;   // hero (the d's stem clears the bowl right now)
+const T_IMPACT = 0.72;   // hero (the d's stem has shrunk into its bowl)
 const SHOCK_DUR = 0.95;  // shockwave travel time to the far corner
 const T_END = 2.3;
-const REWIND = 1.5;      // reverse playback speed
-const GRAVITY = 19.3;    // x-heights per s², for the falling stem
+const SPEED = 1 / 3;     // timeline seconds per real second
+const REWIND = 1.5;      // reverse playback speed, relative to forward
 
 // ------------------------------------------------------------------ //
 // Letterforms: monoline geometric strokes in units where the x-height
@@ -280,17 +281,11 @@ function pose() {
     ? 0.07 * easeOutCubic(T / T_RELEASE)
     : 0.07 * Math.exp(-(T - T_RELEASE) * 9) * Math.cos((T - T_RELEASE) * 24);
   const nTop = 1 + (ASC - 1) * spring(T - T_N, 26, 0.42);
-  // The d's stem slides down through its bowl and keeps falling.
-  const tf = Math.max(0, T - T_RELEASE);
-  const dy = 0.5 * GRAVITY * tf * tf;
-  const free = Math.max(0, dy - ASC);
-  const rot = -0.22 * free;
-  const sx = STEM_X + 0.07 * free, sy = MID - dy;
-  const stem = {
-    x1: sx - Math.sin(rot) * MID, y1: sy - Math.cos(rot) * MID,
-    x2: sx + Math.sin(rot) * MID, y2: sy + Math.cos(rot) * MID,
-    dy,
-  };
+  // The d's stem shrinks into the middle of its bowl's side, speeding up
+  // like a tape measure snapping home, and is gone at the impact.
+  const k = clamp01((T - T_RELEASE) / (T_IMPACT - T_RELEASE));
+  const f = 1 - k * k;                    // how much of the stem is left
+  const stem = { y1: 0.5 - 0.5 * f, y2: 0.5 + (ASC - 0.5) * f };
   const flex = spring(heroT, 20, 0.3);
   return {
     heroT, hero, nTop, stem, crouch,
@@ -300,12 +295,6 @@ function pose() {
     scale: 1 + 0.07 * spring(heroT, 18, 0.35),
     bob: hero ? 0.025 * Math.sin(clock * 2.1) : 0,
   };
-}
-
-// When the falling stem's top leaves the bottom of the screen.
-function tClank() {
-  const dyOff = ASC + (H - baseY) / U + 0.2;
-  return T_RELEASE + Math.sqrt(2 * dyOff / GRAVITY);
 }
 
 function wordMatrix(p) {
@@ -340,10 +329,10 @@ function wordPath(p) {
   x = L0 + X_D;                           // the bowl of d, which is an o
   path.moveTo(x + 1, 0.5);
   path.arc(x + 0.5, 0.5, 0.5, 0, TAU);
-  const s = p.stem;                       // the d's stem, wherever it is
-  if (baseY - Math.max(s.y1, s.y2) * U < H + 60) {
-    path.moveTo(s.x1, s.y1);
-    path.lineTo(s.x2, s.y2);
+  const s = p.stem;                       // what is left of the d's stem
+  if (s.y2 > s.y1) {
+    path.moveTo(STEM_X, s.y1);
+    path.lineTo(STEM_X, s.y2);
   }
   return path;
 }
@@ -369,12 +358,6 @@ function render() {
       sx += a * wob(T, 1);
       sy += a * wob(T, 2);
     }
-    const tc = T - tClank();
-    if (tc >= 0) {
-      const a = 0.04 * U * Math.exp(-tc * 14);
-      sx += a * wob(T, 3);
-      sy += a * wob(T, 4);
-    }
     if (T > 0.04 && T < T_RELEASE) sx += 0.012 * U * Math.sin(T * 130);
   }
   const screen = new DOMMatrix([dpr, 0, 0, dpr, dpr * sx, dpr * sy]);
@@ -394,7 +377,6 @@ function render() {
   drawWord(screen.multiply(m), p);
   ctx.setTransform(screen);
   if (hero && !reduceMotion) drawStars(m, heroT);
-  drawClank(m);
 
   if (hero) {
     const flash = (reduceMotion ? 0.25 : 0.85) * Math.exp(-heroT * 10);
@@ -608,8 +590,8 @@ function drawAnnotations(m, p) {
     ctx.restore();
   };
   dim(L0 - 0.42, 0, p.nTop, p.nTop.toFixed(2), -1);
-  const top = ASC - p.stem.dy;
-  if (baseY - top * U < H) dim(-L0 + 0.42, top - ASC, top, top > 0.45 ? top.toFixed(2) : '?!', 1);
+  const len = p.stem.y2 - p.stem.y1;
+  if (len > 0.15) dim(-L0 + 0.42, p.stem.y1, p.stem.y2, len > 0.45 ? len.toFixed(2) : '?!', 1);
 
   // Construction centers of the two bowls.
   for (const x of [L0 + X_E + 0.5, L0 + X_D + 0.5]) {
@@ -723,42 +705,6 @@ function drawStars(m, heroT) {
   }
 }
 
-// The d's stem lands somewhere below the screen.
-function drawClank(m) {
-  const tc = T - tClank();
-  if (tc < 0 || tc > 1.1) return;
-  const fs = clamp(U * 0.36, 26, 64);
-  const x = clamp(m.transformPoint({ x: STEM_X, y: 0 }).x, fs * 1.6, W - fs * 1.6);
-  const y = H - fs * 0.85;
-  const pop = spring(tc, 30, 0.35);
-  const alpha = 1 - smooth(clamp01((tc - 0.6) / 0.45));
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(x, y);
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  for (const a of [-2.3, -1.9, -1.25, -0.85]) {
-    const r0 = fs * (0.9 + 0.2 * pop), r1 = fs * (1.1 + 0.45 * pop);
-    ctx.moveTo(Math.cos(a) * r0, fs * 0.85 + Math.sin(a) * r0 * 0.7);
-    ctx.lineTo(Math.cos(a) * r1, fs * 0.85 + Math.sin(a) * r1 * 0.7);
-  }
-  ctx.stroke();
-  ctx.rotate(-0.14 + 0.05 * Math.sin(tc * 40) * Math.exp(-tc * 6));
-  ctx.scale(pop, pop);
-  ctx.font = `${fs}px Bangers, Impact, "Arial Black", sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = fs * 0.16;
-  ctx.strokeStyle = C.line;
-  ctx.strokeText('CLANK!', 0, 0);
-  ctx.fillStyle = C.fill;
-  ctx.fillText('CLANK!', 0, 0);
-  ctx.restore();
-}
-
 // ------------------------------------------------------------------ //
 // Sound: everything is synthesized on the fly.
 // ------------------------------------------------------------------ //
@@ -852,23 +798,6 @@ function boom() {
   brass([261.63, 329.63, 392.0, 523.25], 0, 0.75, 0.07, 3200);  // C major: ta-DAAA
 }
 
-function clank() {
-  const t0 = actx.currentTime + 0.05;  // it is a long way down
-  [[820, 0.07, 0.5], [1387, 0.05, 0.35], [2123, 0.035, 0.25], [3011, 0.025, 0.18]].forEach(([fq, v, d]) => {
-    const o = actx.createOscillator();
-    o.frequency.value = fq;
-    o.connect(envGain(t0, 0.002, v, 0, d));
-    o.start(t0); o.stop(t0 + d + 0.05);
-  });
-  const n = actx.createBufferSource();
-  n.buffer = noise;
-  const f = actx.createBiquadFilter();
-  f.type = 'highpass';
-  f.frequency.value = 2500;
-  n.connect(f).connect(envGain(t0, 0.001, 0.15, 0, 0.04));
-  n.start(t0); n.stop(t0 + 0.08);
-}
-
 function sadTrombone() {
   const t0 = actx.currentTime;
   const notes = [[233.08, 0, 0.3], [220.0, 0.33, 0.3], [207.65, 0.66, 0.3], [196.0, 0.99, 1.0]];
@@ -904,10 +833,9 @@ function sadTrombone() {
 function fireCues(prev, cur) {
   if (cur <= prev || !audible()) return;
   const cues = [
-    [T_RELEASE, () => slideWhistle(1500, 380, T_IMPACT - T_RELEASE + 0.08)],
+    [T_RELEASE, () => slideWhistle(1500, 380, (T_IMPACT - T_RELEASE) / SPEED + 0.08)],
     [T_N, () => { brass([392.0], 0, 0.04, 0.06, 2600); brass([392.0], 0.075, 0.04, 0.06, 2600); }],
     [T_IMPACT, boom],
-    [tClank(), clank],
   ];
   for (const [t, play] of cues) if (prev < t && t <= cur) play();
 }
@@ -996,7 +924,7 @@ function frame(now) {
   if (!frozen) clock += dt;
   if (dir !== 0 && !(drag && drag.moved)) {
     const prev = T;
-    T = clamp(T + dir * dt * (dir > 0 ? 1 : REWIND), 0, T_END);
+    T = clamp(T + dir * dt * SPEED * (dir > 0 ? 1 : REWIND), 0, T_END);
     fireCues(prev, T);
     if (T === 0 || T === T_END) dir = 0;
   }
